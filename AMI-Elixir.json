@@ -1,0 +1,108 @@
+{
+	"AWSTemplateFormatVersion" : "2010-09-09",
+	"Description" : "This template describes the AMI used when creating new elixir apps",
+	"Parameters" : {
+		"keyName" : {
+			"Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+			"Type": "AWS::EC2::KeyPair::KeyName",
+			"ConstraintDescription" : "must be the name of an existing EC2 KeyPair."
+		},
+		"EC2Size" : {
+			"Description" : "WebServer EC2 instance type",
+			"Type" : "String",
+			"Default" : "t2.small",
+			"AllowedValues" : [ 
+				"t1.micro", 
+				"t2.nano", 
+				"t2.micro", 
+				"t2.small", 
+				"t2.medium", 
+				"t2.large"
+				]
+			,
+			"ConstraintDescription" : "must be a valid EC2 instance type."
+		},
+		"EC2NameTag": {
+			"Default": "ElixirApp",
+			"Description" : "The name tag for the EC2 instance",
+			"Type": "String",
+			"MinLength": "1",
+			"MaxLength": "64",
+			"AllowedPattern" : "[a-zA-Z][a-zA-Z0-9]*",
+			"ConstraintDescription" : "must begin with a letter and contain only alphanumeric characters."
+		}
+	},
+	"Resources" : {
+		"MyEC2Instance" : {
+			"Type" : "AWS::EC2::Instance",
+			"Metadata" : {
+				"AWS::CloudFormation::Init" : {
+					"configSets" : {
+						"install" : [ "node", "elixir", "phoenix" ]
+					},
+					"node" : {
+						"commands" : {
+							"1-getNode" : {
+								"command" : "curl -sL https://deb.nodesource.com/setup_6.x | sudo -E bash -"
+							},
+							"2-installNode" : {
+								"command" : "sudo apt-get install -y nodejs"
+							}
+						}
+					},
+					"elixir" : {
+						"commands" : {
+							"1-getErlang" : {
+								"command" : "wget https://packages.erlang-solutions.com/erlang-solutions_1.0_all.deb && sudo dpkg -i erlang-solutions_1.0_all.deb"
+							},
+							"2-updateRepo" : {
+								"command" : "sudo apt-get update"
+							},
+							"3-installErlang" : {
+								"command" : "sudo apt-get install -y esl-erlang"
+							},
+							"4-installElixir" : {
+								"command" : "sudo apt-get install -y elixir"
+							}
+						}
+					},
+					"phoenix" : {
+						"commands" : {
+							"1-installInotify" : {
+								"command" : "sudo apt-get install -y inotify-tools"
+							},
+							"2-installPhoenix" : {
+								"command" : "sudo mix archive.install https://github.com/phoenixframework/archives/raw/master/phoenix_new.ez --force"
+							},
+							"3-moveMixArchive" : {
+								"command" : "sudo mv /root/.mix /home/ubuntu/"
+							}
+						}
+					}
+				}
+			},
+			"Properties" : {
+				"ImageId" : "ami-f95ef58a",
+				"InstanceType" : { "Ref" : "EC2Size" },
+				"KeyName" : { "Ref" : "keyName" },
+				"Tags" : [
+					{
+						"Key" : "Name",
+						"Value" : { "Ref" : "EC2NameTag" }
+					}
+				],
+				"UserData" : { "Fn::Base64" : { "Fn::Join" : [ "", [
+					"#!/bin/bash -xe\n",
+					"apt-get update -y\n",
+					"apt-get install -y python-pip\n",
+					"pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
+					"/usr/local/bin/cfn-init",
+					" --stack ", { "Ref": "AWS::StackName" },
+					" --resource MyEC2Instance",
+					" --configsets install",
+					" --region ", { "Ref" : "AWS::Region" }, "\n"
+				] ] } } 
+			}
+		}
+	}
+}
